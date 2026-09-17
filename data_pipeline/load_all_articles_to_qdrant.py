@@ -8,9 +8,11 @@ import numpy as np
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, UpdateStatus
 from config.paths import EMBEDDING_FILE, INDEX_FILE
+
 # ============================================================
 # 1. YAPILANDIRMA
 # ============================================================
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Qdrant Bağlantı Bilgileri (REST üzerinden çalışan ayarlar)
@@ -27,7 +29,6 @@ TOLERANCE_ATOL = 1e-5
 # Dosya Yolları
 ARTICLE_FILE = os.path.join(BASE_DIR, "data", "balanced_articles.csv")
 SUBJECT_FILE = os.path.join(BASE_DIR, "data", "article_subjects.csv")
-
 
 
 def parse_keywords(raw_keywords: str) -> list[str]:
@@ -351,7 +352,6 @@ def main():
         print(">>> TÜM VERİ YÜKLEME BAŞARISIZ <<<")
         print("Doğrulama kontrollerinde tutarsızlık tespit edildi. Yukarıdaki hata çıktılarını inceleyiniz.")
     print("=" * 90)
-
 
 if __name__ == "__main__":
     main()

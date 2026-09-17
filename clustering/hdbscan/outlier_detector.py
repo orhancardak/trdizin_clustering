@@ -59,7 +59,6 @@ class OutlierDetector:
 
         client = self._get_qdrant_client()
         knn_indices = np.empty((n_samples, self.knn_k + 1), dtype=np.int32)
-
         num_batches = (n_samples + batch_size - 1) // batch_size
 
         for b_idx in range(num_batches):

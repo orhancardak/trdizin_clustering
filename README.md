@@ -96,7 +96,7 @@
 
       Disiplin) / TP-2 (Alt Alan Uyuşmazlığı) anomali filtreleme tablosu.
 
-  • K-Means Çoklu Konu Tahmin Analizi: http://localhost:5001/kmeans
+  • K-Means Çoklu Konu Tahmin Analizi:
 
       • Seeded K-Means modelinin gerçek konu etiketleri ile tahmin edilen etiketlerinin karşılaştırması, F1 skorları,
 

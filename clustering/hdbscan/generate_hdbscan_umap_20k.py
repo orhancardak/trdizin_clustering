@@ -15,29 +15,15 @@ print("=" * 100)
 print("HDBSCAN 20K - GERÇEK 2D UMAP KOORDİNATLARI")
 print("=" * 100)
 
-embeddings = np.load(
-    EMBEDDING_FILE,
-    mmap_mode="r"
-)
-
-index_df = pd.read_csv(
-    INDEX_FILE,
-    dtype={"external_id": str}
-)
-
-index_df["external_id"] = (
-    index_df["external_id"]
-    .astype(str)
-    .str.strip()
-)
+embeddings = np.load(EMBEDDING_FILE, mmap_mode="r")
+index_df = pd.read_csv(INDEX_FILE, dtype={"external_id": str})
+index_df["external_id"] = index_df["external_id"].astype(str).str.strip()
 
 print("Embedding shape:", embeddings.shape)
 print("Index satırı:", len(index_df))
 
 if embeddings.shape[0] != len(index_df):
-    raise RuntimeError(
-        "Embedding satır sayısı ile index satır sayısı eşleşmiyor."
-    )
+    raise RuntimeError("Embedding satır sayısı ile index satır sayısı eşleşmiyor.")
 
 print()
 print("[*] 2D UMAP çalışıyor...")

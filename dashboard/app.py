@@ -701,7 +701,6 @@ def get_evaluation():
 
 # ==============================================================================
 # K-MEANS FINAL KONU TAHMİN SAYFASI
-# HDBSCAN route ve veri akışına dokunmadan eklenmiştir.
 # ==============================================================================
 
 def _km_text(value):

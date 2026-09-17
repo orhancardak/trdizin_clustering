@@ -7,19 +7,11 @@ def clean_taxonomy_label(raw_path):
     if not isinstance(raw_path, str):
         return ""
 
-    parts = [
-        p.strip()
-        for p in raw_path.split(">")
-        if p.strip()
-    ]
-
+    parts = [p.strip() for p in raw_path.split(">") if p.strip()]
     cleaned_parts = []
 
     for part in parts:
-        if (
-            not cleaned_parts
-            or cleaned_parts[-1].lower() != part.lower()
-        ):
+        if not cleaned_parts or cleaned_parts[-1].lower() != part.lower():
             cleaned_parts.append(part)
 
     return " > ".join(cleaned_parts)
@@ -46,22 +38,13 @@ def generate_cluster_labels(
     y_col="umap_y",
     text_col="baslik"
 ):
-    required_cols = [
-        cluster_col,
-        x_col,
-        y_col
-    ]
+    required_cols = [cluster_col, x_col, y_col]
 
     for col in required_cols:
         if col not in df.columns:
-            raise ValueError(
-                f"DataFrame içinde gerekli sütun bulunamadı: {col}"
-            )
+            raise ValueError(f"DataFrame içinde gerekli sütun bulunamadı: {col}")
 
-    valid_df = df[
-        df[cluster_col] != -1
-    ].copy()
-
+    valid_df = df[df[cluster_col] != -1].copy()
     cluster_summaries = []
 
     if "tam_kategori_yollari" in valid_df.columns:
@@ -72,9 +55,7 @@ def generate_cluster_labels(
         category_col = None
 
     for cluster_id, group in valid_df.groupby(cluster_col):
-
         size = len(group)
-
         if size == 0:
             continue
 
@@ -83,9 +64,7 @@ def generate_cluster_labels(
         mean_y = group[y_col].mean()
 
         distances = np.sqrt(
-            (group[x_col] - mean_x) ** 2
-            +
-            (group[y_col] - mean_y) ** 2
+            (group[x_col] - mean_x) ** 2 + (group[y_col] - mean_y) ** 2
         )
 
         medoid_idx = distances.idxmin()
@@ -118,7 +97,6 @@ def generate_cluster_labels(
 
                 dominant_category = most_common_path
                 taxonomy_path = most_common_path
-
                 category_purity = min(count / size, 1.0)
 
                 parts = [
