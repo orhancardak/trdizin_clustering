@@ -13,6 +13,8 @@ API_URL = (
     "api/defaultSearch/publication/"
 )
 
+# Operasyonel ayar: API kotası ve veri toplama süresine göre değiştirilebilir.
+# Metodoloji dokümanındaki üretim veri seti bu değerle oluşturulmuştur.
 TARGET_PER_SUBJECT = 750
 PAGE_SIZE = 50
 REQUEST_SLEEP = 0.25

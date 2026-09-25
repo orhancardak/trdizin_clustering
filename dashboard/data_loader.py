@@ -75,28 +75,11 @@ def load_algorithm_data(algorithm="hdbscan", reload=False):
   else:
     df = pd.read_csv(file_path, encoding="utf-8-sig")
 
-  """# 2. Skor kolonlarını standartlaştıralım ve eksik varsa güvenli değer atayalım
-  if "risk_skoru" not in df.columns:
-    df["risk_skoru"] = 0.0
-  else:
-    df["risk_skoru"] = df["risk_skoru"].fillna(0.0)
-
-  if "glosh_skoru" not in df.columns:
-    df["glosh_skoru"] = 0.0
-  else:
-    df["glosh_skoru"] = df["glosh_skoru"].fillna(0.0)
-  """
   # 2. Skor kolonlarını standartlaştırma
   df["risk_skoru"] = df["risk_skoru"].fillna(0.0) if "risk_skoru" in df.columns else 0.0
   df["glosh_skoru"] = df["glosh_skoru"].fillna(0.0) if "glosh_skoru" in df.columns else 0.0
-  """
+
   # 3. Özet sütunu kontrolü
-  if "ozet" not in df.columns:
-    if "abstract" in df.columns:
-      df["ozet"] = df["abstract"]
-    else:
-      df["ozet"] = np.nan"""
-      # 3. Özet sütunu kontrolü
   if "ozet" not in df.columns:
     df["ozet"] = df["abstract"] if "abstract" in df.columns else np.nan
 
@@ -114,17 +97,6 @@ def load_algorithm_data(algorithm="hdbscan", reload=False):
     if os.path.exists(candidate):
       umap_file = candidate
 
-  """if umap_file and os.path.exists(umap_file):
-    try:
-      umap_df = pd.read_csv(umap_file)
-      
-      # Sütun adını esnek bulalım
-      id_col_umap = None
-      for col in ["external_id", "id", "ArticleID", "makale_id"]:
-        if col in umap_df.columns:
-          id_col_umap = col
-          break"""
-          
   if umap_file and os.path.exists(umap_file):
     try:
       umap_df = pd.read_csv(umap_file)

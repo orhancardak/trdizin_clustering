@@ -77,27 +77,39 @@
                     <div class="d-flex flex-column align-items-end gap-1">
 
                         <div class="btn-group" role="group" aria-label="Harita Görünümü">
-                            <button type="button"
-                                    class="btn btn-outline-danger btn-sm active"
-                                    id="btnRiskView"
-                                    onclick="switchMapView('risk')">
+                            <a href="{{ url_for('analysis') }}?view=risk"
+                               class="btn btn-outline-danger btn-sm {% if request.args.get('view', 'risk') != 'cluster' %}active{% endif %}"
+                               id="btnRiskView"
+                               aria-pressed="{{ 'false' if request.args.get('view') == 'cluster' else 'true' }}">
                                 Risk Görünümü
-                            </button>
+                            </a>
 
-                            <button type="button"
-                                    class="btn btn-outline-primary btn-sm"
-                                    id="btnClusterView"
-                                    onclick="switchMapView('cluster')">
+                            <a href="{{ url_for('analysis') }}?view=cluster"
+                               class="btn btn-outline-primary btn-sm {% if request.args.get('view') == 'cluster' %}active{% endif %}"
+                               id="btnClusterView"
+                               aria-pressed="{{ 'true' if request.args.get('view') == 'cluster' else 'false' }}">
                                 Küme Görünümü
-                            </button>
+                            </a>
                         </div>
 
-                        <button type="button"
-                                class="cluster-switch-btn d-none"
-                                id="btnClusterModeSwitch"
-                                onclick="toggleClusterView()">
-                            Outlier'ları Göster
-                        </button>
+                        <div id="clusterModeControls"
+                             class="btn-group"
+                             role="group"
+                             aria-label="Küme atama görünümü"
+                             {% if request.args.get('view') != 'cluster' %}hidden{% endif %}>
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-sm"
+                                    id="btnOriginalCluster"
+                                    title="HDBSCAN'ın özgün -1 gürültü etiketlerini gösterir">
+                                Özgün HDBSCAN
+                            </button>
+                            <button type="button"
+                                    class="btn btn-primary btn-sm active"
+                                    id="btnForcedCluster"
+                                    title="Yalnızca görselleştirme için, gürültü noktalarını en güçlü yumuşak üyeliğine göre yerleştirir">
+                                Yumuşak Atama
+                            </button>
+                        </div>
 
                     </div>
 
@@ -669,6 +681,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js', v='hdbscan-cluster-v11') }}"></script>
 </body>
 </html>

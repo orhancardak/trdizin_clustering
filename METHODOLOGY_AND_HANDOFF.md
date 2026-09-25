@@ -80,7 +80,7 @@ $$\text{embedding\_text} = \text{Başlık} + \text{". "} + \text{Özet} + \text{
 
 ### 2.4 Operasyonel Veri Toplama Ayarları
 `data_pipeline/fetch_balanced_trdizin.py` dosyasında yer alan:
-- `TARGET_PER_SUBJECT = 150`
+- `TARGET_PER_SUBJECT = 750`
 - `PAGE_SIZE = 50`
 - `REQUEST_SLEEP = 0.25`
 
@@ -357,8 +357,6 @@ $$\text{Baseline D Hassasiyeti (Precision)} = \frac{\text{TP-1} + \text{TP-2}}{\
 ### 11.3 389 vs. 388 Kayıt Açıklaması
 External ID `1383848` eski 389 setinde bulunuyordu ancak güncel pipeline/Qdrant yeniden hesaplamasında artık D koşullarını geçmediği için güncel production/audit evreni **388**'dir. Sistemdeki tüm ana metrikler ve hata analizleri bu dondurulmuş 388 kayıt üzerinden verilir.
 
----
-
 # 12. Ablation Çalışması
 
 `clustering/hdbscan/ablation_study.py` ile pipeline bileşenlerinin (Taksonomi, kNN, GLOSH) katkısını ölçmek amacıyla dondurulmuş kurallarla offline bir ablation çalışması yürütülmüştür.
@@ -551,7 +549,7 @@ Aşağıdaki tablo, sistemde kullanılan tüm parametrelerin metodolojik dayana�
 | **Alt Alan Baskınlık** | `knn_baskinlik >= 0.40` | **Heuristic / manual baseline** | Alt alan önerisi eşleşmediğinde yanlış pozitifleri frenlemek için konulmuş daha sıkı eşik. |
 | **Güçlü GLOSH Eşiği** | `glosh > 0.70` | **Heuristic / manual baseline** | GLOSH dağılımında belirgin yoğunluk anomalilerini yakalar. (Ablation $D \setminus C$ vakalarında gözlenen $>0.91$ değerleri production threshold değil, o 4 kayıtta gözlenen ampirik değerlerdir; tek geçerli kural eşiği $>0.70$'tir). |
 | **Risk Ağırlıkları** | `0.40 / 0.35 / 0.25` | **Heuristic composite baseline** | Komşuluk `knn_impurity` (%40), semantik `sim_fark` (%35) ve yoğunluk `glosh` (%25) dengesini kuran sezgisel ağırlıklandırma. `knn_baskinlik` risk formülüne girmez. |
-| **Veri Toplama Ayarları**| `TARGET=150, SLEEP=0.25` | **Operational** | TR Dizin API kotalarına uyum ve dengeli örneklem toplama ayarları. |
+| **Veri Toplama Ayarları**| `TARGET=750, SLEEP=0.25` | **Operational** | TR Dizin API kotalarına uyum ve dengeli örneklem toplama ayarları. |
 
 
 > **Metodolojik Uyarı:** Tablodaki eşiklerin kesin sayısal değerleri (`sim_fark > 0.08`, `label_sim_fark >= 0.09`, `knn_impurity >= 0.50`, `knn_baskinlik >= 0.30`, `glosh > 0.70`) **matematiksel/sistematik bir optimizasyonla (grid search / Bayesian optimization) optimize edilmemiştir**. Bu değerler keşifsel analizlerde alan bilgisiyle belirlenmiş sağlam sezgisel taban çizgileridir (heuristic baselines).

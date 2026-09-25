@@ -6,6 +6,10 @@ venv/
 
 # Environment / gizli bilgiler
 .env
+# Çalışma zamanı yüklemeleri ve veritabanı state'i
+embeddings/incoming/
+data/postgres_data/
+data/qdrant_storage/
 
 # IDE
 .vscode/

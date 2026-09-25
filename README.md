@@ -34,6 +34,11 @@
 
     cd trdizin-clustering
 
+    # Secret ve çalışma ortamı ayarlarını oluşturun
+    cp .env.example .env
+    # .env içindeki POSTGRES_PASSWORD ve UPLOAD_TOKEN değerlerini
+    # üretim sırlarıyla değiştirin.
+
     
 
     # 2. Gerekli veri ve sonuç dizinlerinin varlığını doğrulayın
@@ -54,7 +59,8 @@
 
 
 
-    docker compose up -d --build
+  docker compose up -d --build
+
 
 
 
@@ -80,7 +86,10 @@
 
   Uygulama loglarını anlık takip etmek için:
 
-    docker compose logs -f app
+  docker compose logs -f app
+
+  # Dış servis gerektirmeyen hızlı regresyon testleri
+  python -m unittest -v tests.test_smoke
 
   ──────
 

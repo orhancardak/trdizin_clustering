@@ -1,16 +1,21 @@
 import os
 import numpy as np
 import pandas as pd
-from .outlier_detector import OutlierDetector
-from .cluster_labeler import generate_cluster_labels
+try:
+    from .outlier_detector import OutlierDetector
+    from .cluster_labeler import generate_cluster_labels
+except ImportError:  # Doğrudan dosya olarak çalıştırmayı destekle
+    from clustering.hdbscan.outlier_detector import OutlierDetector
+    from clustering.hdbscan.cluster_labeler import generate_cluster_labels
 from config.paths import EMBEDDING_FILE, UMAP_FILE
 
 # ==========================================
 # DOSYA YOLLARI
 # ==========================================
-ARTICLE_FILE = "data/balanced_articles.csv"
-SUBJECT_FILE = "data/article_subjects.csv"
-OUTPUT_FILE = "results/hdbscan_anomaliler.csv"
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+ARTICLE_FILE = os.path.join(PROJECT_ROOT, "data", "balanced_articles.csv")
+SUBJECT_FILE = os.path.join(PROJECT_ROOT, "data", "article_subjects.csv")
+OUTPUT_FILE = os.path.join(PROJECT_ROOT, "results", "hdbscan_anomaliler.csv")
 
 def main():
     print("=" * 80)
@@ -81,8 +86,8 @@ def main():
         text_col='baslik'
     )
     
-    os.makedirs("data", exist_ok=True)
-    summary_path = 'data/hdbscan_cluster_summary.csv'
+    os.makedirs(os.path.join(PROJECT_ROOT, "data"), exist_ok=True)
+    summary_path = os.path.join(PROJECT_ROOT, "data", "hdbscan_cluster_summary.csv")
     cluster_summary_df.to_csv(summary_path, index=False, encoding="utf-8-sig")
     print(f"[*] Küme özetleri kaydedildi: {summary_path}")
 
@@ -95,7 +100,7 @@ def main():
     # -----------------------------------------------------------
 
     # 6. Sonuçları Kaydet
-    os.makedirs("results", exist_ok=True)
+    os.makedirs(os.path.join(PROJECT_ROOT, "results"), exist_ok=True)
     df_anomaliler.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
 
     print("\n" + "=" * 80)

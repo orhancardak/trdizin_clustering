@@ -2,6 +2,10 @@ let currentAnomalies = [];
 let detailModalInstance = null;
 let evalModalInstance = null;
 let currentAlgo = 'hdbscan';
+let currentView = new URLSearchParams(window.location.search).get('view') === 'cluster' ? 'cluster' : 'risk';
+// Yumuşak atama yalnızca UMAP atlasını okunabilir kılar; HDBSCAN kararı,
+// GLOSH ve risk hesaplamaları her zaman özgün hdbscan_kume üzerinde kalır.
+let currentClusterView = 'forced';
 
 let currentPage = 1;
 const perPage = 50;
@@ -42,6 +46,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    // Inline onclick'e ek olarak açık event listener kullanılır; bu, CSP/Safari
+    // ortamlarında global fonksiyon çözümleme sorunlarını önler.
+
 
     document.getElementById("algoSelect").addEventListener("change", (e) => {
         currentAlgo = e.target.value;
@@ -63,7 +70,16 @@ document.addEventListener("DOMContentLoaded", () => {
             resetAndLoadAnomalies();
         }, 300);
     });
+    document.getElementById('btnOriginalCluster')?.addEventListener('click', () => {
+        switchClusterView('original');
+    });
+    document.getElementById('btnForcedCluster')?.addEventListener('click', () => {
+        switchClusterView('forced');
+    });
 
+    // URL'deki görünüm seçimini butonlara yansıt; grafik henüz hazır değilse
+    // switchMapView yalnızca buton durumunu günceller.
+    switchMapView(currentView);
     loadDashboard();
 });
 
@@ -98,8 +114,11 @@ async function loadDashboard() {
 
     // 1. PLOTLY KÜME GRAFİĞİNİ YÜKLE
     try {
-        const plotRes = await fetch(`/api/plot?algorithm=${algo}`);
+        const plotRes = await fetch(`/api/plot?algorithm=${algo}&view=${currentView}`);
         const plotObj = await plotRes.json();
+        if (!plotRes.ok) {
+            throw new Error(plotObj?.error || `Grafik verisi alınamadı (HTTP ${plotRes.status}).`);
+        }
 
         // LOD metadata rozetini göster
         updateLodMetaBadge(plotObj.lod_meta);
@@ -225,10 +244,25 @@ async function loadDashboard() {
 
     } catch (err) {
         console.error("Grafik çizilirken hata oluştu:", err);
+        renderPlotError(err.message);
     }
 
     // 2. ANOMALİ KARTLARINI YÜKLE (Sayfalı / Lazy)
     await resetAndLoadAnomalies();
+}
+
+function renderPlotError(message) {
+    const plotElement = document.getElementById('clusterPlot');
+    if (!plotElement) return;
+
+    if (window.Plotly) Plotly.purge(plotElement);
+    plotElement.replaceChildren();
+
+    const alert = document.createElement('div');
+    alert.className = 'alert alert-warning m-3 small';
+    alert.setAttribute('role', 'alert');
+    alert.textContent = `UMAP grafiği yüklenemedi: ${message}`;
+    plotElement.appendChild(alert);
 }
 
 // --- LEVEL OF DETAIL (LOD) & VIEWPORT YARDIMCI FONKSİYONLARI ---
@@ -343,6 +377,17 @@ function updateLodMetaBadge(lodMeta) {
 }
 
 function updateClusterAnnotations(zoomLevel = 'level_1', triggerRelayout = true) {
+    // Küme görünümü nokta-nokta renkli kümeleri gösterir; merkezdeki
+    // "Sosyal Bilimler/Fen" gibi toplu atlas yazıları noktaların üzerine
+    // binmemelidir. Anotasyonlar yalnızca risk görünümünde kullanılır.
+    if (currentView === 'cluster') {
+        currentClusterAnnotations = [];
+        if (triggerRelayout && !isLodUpdating) {
+            Plotly.relayout('clusterPlot', { annotations: [] });
+        }
+        return;
+    }
+
     if (!significantClustersData || significantClustersData.length === 0) return;
 
     currentClusterAnnotations = significantClustersData.map(c => {
@@ -379,40 +424,78 @@ function updateClusterAnnotations(zoomLevel = 'level_1', triggerRelayout = true)
     }
 }
 
-function applyClusterColoring(trace) {
-    if (!trace || !trace.customdata) return;
-
+function getClusterVisualData(records) {
     const palette = [
         '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f',
         '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#374983'
     ];
 
-    const records = trace.customdata;
-
-    const colorData = records.map(d => {
-        let kid;
-
-       if (
-            currentClusterView === 'forced' &&
-            d.forced_cluster !== undefined
-        ) {
-            kid = Number(d.forced_cluster);
-        } else {
-            kid = d.kume !== undefined
-                ? d.kume
-                : (d.kmeans_kume !== undefined ? d.kmeans_kume : 0);
+    const clusterIds = records.map(record => {
+        if (currentClusterView === 'forced' && record.forced_cluster !== undefined) {
+            return Number(record.forced_cluster);
         }
-
-        if (kid === -1) return '#d3d3d3';
-
-        return palette[Math.abs(kid) % palette.length];
+        return Number(record.kume !== undefined
+            ? record.kume
+            : (record.kmeans_kume !== undefined ? record.kmeans_kume : -1));
     });
 
+    return {
+        colors: clusterIds.map(clusterId => {
+            if (!Number.isFinite(clusterId) || clusterId === -1) return '#d3d3d3';
+            return palette[Math.abs(clusterId) % palette.length];
+        }),
+        sizes: clusterIds.map(clusterId => clusterId === -1 ? 10 : 6),
+    };
+}
+
+function applyClusterColoring(trace) {
+    if (!trace || !trace.customdata) return;
+
+    const visual = getClusterVisualData(Array.from(trace.customdata));
     if (!trace.marker) trace.marker = {};
 
-    trace.marker.color = colorData;
+    trace.marker.color = visual.colors;
+    trace.marker.size = visual.sizes;
     trace.marker.colorscale = null;
+    trace.marker.colorbar = null;
     trace.marker.showscale = false;
+}
+
+function redrawPrimaryTrace(plotElement, colorData, isRiskView, sizeData = null) {
+    if (!plotElement || !plotElement.data || !plotElement.data[0]) return;
+
+    const traces = plotElement.data.map((trace, index) => {
+        if (index !== 0) return trace;
+        return {
+            ...trace,
+            marker: {
+                ...(trace.marker || {}),
+                color: colorData,
+                ...(sizeData ? { size: sizeData } : {}),
+                showscale: isRiskView,
+                ...(isRiskView ? {
+                    colorscale: [
+                        [0, '#474747'],
+                        [0.5, '#BB5B5B'],
+                        [1, '#e60404']
+                    ],
+                    colorbar: { ...(trace.marker?.colorbar || {}), title: 'Risk' }
+                } : {
+                    colorscale: null,
+                    colorbar: null,
+                })
+            }
+        };
+    });
+
+    // Plotly.react, marker renk dizisini doğrudan yeniden kurar ve eski
+    // numeric colorscale ile kategorik renklerin çakışmasını önler.
+    return Plotly.react(plotElement, traces, plotElement.layout, {
+        responsive: true,
+        displayModeBar: 'hover',
+        displaylogo: false,
+        scrollZoom: false
+    });
 }
 
 function scheduleLodUpdate(bbox) {
@@ -454,7 +537,7 @@ async function fetchAndUpdateLodPlot(bbox) {
     const plotElement = document.getElementById('clusterPlot');
     if (!plotElement) return;
 
-    let url = `/api/plot?algorithm=${currentAlgo}`;
+    let url = `/api/plot?algorithm=${currentAlgo}&view=${currentView}`;
     if (bbox) {
         url += `&xmin=${bbox.xmin.toFixed(6)}&xmax=${bbox.xmax.toFixed(6)}&ymin=${bbox.ymin.toFixed(6)}&ymax=${bbox.ymax.toFixed(6)}`;
     }
@@ -1258,141 +1341,82 @@ async function loadEvaluationMetrics() {
         console.error("Metrikler yüklenirken hata:", err);
     }
 }
-let currentView = 'risk';
-let currentClusterView = 'forced';
-
 function switchMapView(viewType) {
     currentView = viewType;
     const plotElement = document.getElementById('clusterPlot');
-    if (!plotElement || !plotElement.data || !plotElement.data[0].customdata) return;
+    const primaryTrace = plotElement?.data?.[0];
 
     // Buton aktiflik sınıflarını güncelle
     const btnRisk = document.getElementById('btnRiskView');
     const btnCluster = document.getElementById('btnClusterView');
-    const clusterModeSwitch = document.getElementById('btnClusterModeSwitch');
+    const clusterModeControls = document.getElementById('clusterModeControls');
 
     if (viewType === 'risk') {
-        btnRisk.className = 'btn btn-danger btn-sm active';
-        btnCluster.className = 'btn btn-sm text-secondary bg-light border';
-
-        clusterModeSwitch.classList.add('d-none');
+        if (btnRisk) {
+            btnRisk.className = 'btn btn-danger btn-sm active';
+            btnRisk.setAttribute('aria-pressed', 'true');
+        }
+        if (btnCluster) {
+            btnCluster.className = 'btn btn-outline-primary btn-sm';
+            btnCluster.setAttribute('aria-pressed', 'false');
+        }
+        if (clusterModeControls) clusterModeControls.hidden = true;
 
     } else {
-        btnRisk.className = 'btn btn-sm text-secondary bg-light border';
-        btnCluster.className = 'btn btn-dark btn-sm active';
+        if (btnRisk) {
+            btnRisk.className = 'btn btn-outline-danger btn-sm';
+            btnRisk.setAttribute('aria-pressed', 'false');
+        }
+        if (btnCluster) {
+            btnCluster.className = 'btn btn-primary btn-sm active';
+            btnCluster.setAttribute('aria-pressed', 'true');
+        }
+        if (clusterModeControls) clusterModeControls.hidden = false;
 
-        clusterModeSwitch.classList.remove('d-none');
-
-        // Küme görünümüne geçildiğinde varsayılan görünüm Zorlanmış olsun
-        currentClusterView = 'forced';
-        clusterModeSwitch.textContent = "Outlier'ları Göster";
     }
 
-    const records = plotElement.data[0].customdata;
+    // Buton durumu, veri henüz yüklenmemiş olsa bile güncellenmiş kalır.
+    if (!primaryTrace || !primaryTrace.customdata) return;
+
+    const records = Array.from(primaryTrace.customdata);
+    if (!records.length) return;
     let colorData = [];
-    let colorScale = '';
-    let colorBarTitle = '';
 
     if (viewType === 'risk') {
         // Risk skorlarına göre renklendirme
         colorData = records.map(d => d.risk_skoru !== undefined ? Number(d.risk_skoru) : 0.5);
-        colorScale = [
-            [0, '#474747'],
-            [0.5, '#BB5B5B'],
-            [1, '#e60404']
-        ];
-        colorBarTitle = 'Risk';
     } else {
-        // Tableau10 benzeri kategorik renk paleti
-        const palette = [
-            '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', 
-            '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#374983'
-        ];
-
-        // Her noktanın küme ID'sine göre paletten renk seçiyoruz (mod alarak döndürüyoruz)
-       colorData = records.map(d => {
-            let kid;
-
-            if (
-                currentClusterView === 'forced' &&
-                d.forced_cluster !== undefined
-            ) {
-                kid = Number(d.forced_cluster);
-            } else {
-                kid = d.kume !== undefined
-                    ? d.kume
-                    : (d.kmeans_kume !== undefined ? d.kmeans_kume : 0);
-            }
-
-            if (kid === -1) return '#d3d3d3';
-
-            return palette[Math.abs(kid) % palette.length];
-        });
-
-        colorScale = null; // Kategorik renklendirmede colorscale kullanılmaz
-        colorBarTitle = 'Küme (Kategorik)';
+        const visual = getClusterVisualData(records);
+        return redrawPrimaryTrace(plotElement, visual.colors, false, visual.sizes);
     }
 
     // Grafiği yeniden çizmeden sadece renk verilerini ve bar görünürlüğünü güncelle
-    Plotly.restyle(plotElement, {
-        'marker.color': [colorData],
-        'marker.colorscale': [colorScale],
-        'marker.showscale': [viewType === 'risk'], // Sadece risk görünümünde renk barı açık olur
-        'marker.colorbar.title': colorBarTitle
-    }, [0]);
-}
-
-function toggleClusterView() {
-    const plotElement = document.getElementById('clusterPlot');
-    const btn = document.getElementById('btnClusterModeSwitch');
-
-    if (!plotElement || !plotElement.data || !plotElement.data[0]) return;
-
-    if (currentClusterView === 'forced') {
-        // Orijinal HDBSCAN görünümü:
-        // outlier noktaları -1 olarak göster
-        currentClusterView = 'original';
-        btn.textContent = "Outlier'ları Kümelere Ata";
-    } else {
-        // Outlier noktalarını soft membership sonucuna
-        // göre en uygun kümeye dahil et
-        currentClusterView = 'forced';
-        btn.textContent = "Outlier'ları Göster";
-    }
-
-    applyClusterColoring(plotElement.data[0]);
-
-    Plotly.restyle(plotElement, {
-        'marker.color': [plotElement.data[0].marker.color],
-        'marker.colorscale': [null],
-        'marker.showscale': [false]
-    }, [0]);
+    redrawPrimaryTrace(plotElement, colorData, viewType === 'risk');
 }
 
 function switchClusterView(clusterViewType) {
+    if (!['original', 'forced'].includes(clusterViewType)) return;
     currentClusterView = clusterViewType;
-
-    const plotElement = document.getElementById('clusterPlot');
-    if (!plotElement || !plotElement.data || !plotElement.data[0]) return;
 
     const btnOriginal = document.getElementById('btnOriginalCluster');
     const btnForced = document.getElementById('btnForcedCluster');
-
-    // Alt butonların aktiflik durumunu güncelle
-    if (clusterViewType === 'original') {
-        btnOriginal.className = 'btn btn-dark btn-sm active';
-        btnForced.className = 'btn btn-outline-secondary btn-sm';
-    } else {
-        btnOriginal.className = 'btn btn-outline-secondary btn-sm';
-        btnForced.className = 'btn btn-dark btn-sm active';
+    if (btnOriginal) {
+        btnOriginal.className = clusterViewType === 'original'
+            ? 'btn btn-primary btn-sm active'
+            : 'btn btn-outline-secondary btn-sm';
+        btnOriginal.setAttribute('aria-pressed', String(clusterViewType === 'original'));
+    }
+    if (btnForced) {
+        btnForced.className = clusterViewType === 'forced'
+            ? 'btn btn-primary btn-sm active'
+            : 'btn btn-outline-secondary btn-sm';
+        btnForced.setAttribute('aria-pressed', String(clusterViewType === 'forced'));
     }
 
-    // Mevcut trace'i seçilen küme tipine göre yeniden renklendir
-    applyClusterColoring(plotElement.data[0]);
+    const plotElement = document.getElementById('clusterPlot');
+    const primaryTrace = plotElement?.data?.[0];
+    if (!primaryTrace?.customdata || currentView !== 'cluster') return;
 
-    Plotly.restyle(plotElement, {
-        'marker.color': [plotElement.data[0].marker.color],
-        'marker.colorscale': [null],
-        'marker.showscale': [false]
-    }, [0]);
+    const visual = getClusterVisualData(Array.from(primaryTrace.customdata));
+    redrawPrimaryTrace(plotElement, visual.colors, false, visual.sizes);
 }

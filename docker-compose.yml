@@ -5,8 +5,9 @@ services:
 
     environment:
       POSTGRES_DB: trdizin_clustering_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # Yerel geliştirme varsayılanları; üretimde .env ile geçersiz kılınabilir.
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
 
     ports:
       - "5434:5432"
@@ -18,7 +19,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U postgres -d trdizin_clustering_db"
+          "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"
         ]
       interval: 5s
       timeout: 5s
@@ -40,14 +41,20 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      qdrant:
+        condition: service_started
 
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: trdizin_clustering_db
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      UPLOAD_TOKEN: ${UPLOAD_TOKEN}
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      QDRANT_URL: http://qdrant:6333
+      EMBEDDINGS_DIR: /app/embeddings
+      UPLOAD_TOKEN: ${UPLOAD_TOKEN:-local-upload-token}
+      FLASK_ENV: ${FLASK_ENV:-production}
+      FLASK_DEBUG: ${FLASK_DEBUG:-0}
       
 
     ports:
@@ -55,7 +62,9 @@ services:
 
     volumes:
       - .:/app
-      - ./data/app_embeddings:/app/embeddings  
+      # Projenin 2B UMAP CSV'sini ve üretim embeddinglerini gizlemeyin.
+      # Yalnızca kullanıcı yüklemeleri için ayrılmış alt dizini kalıcılaştırın.
+      - ./data/app_embeddings:/app/embeddings/incoming
 
     
 
@@ -72,4 +81,3 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - ./data/caddy/data:/data      
       - ./data/caddy/config:/config  
-

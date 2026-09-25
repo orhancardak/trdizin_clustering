@@ -16,6 +16,7 @@ from data_loader import (
 )
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1 GiB üst sınır
 
 @app.route("/api/upload-embedding", methods=["POST"])
 def upload_embedding():
@@ -30,10 +31,17 @@ def upload_embedding():
     if uploaded_file is None:
         return jsonify({"error": "file missing"}), 400
 
-    if not uploaded_file.filename.lower().endswith(".npy"):
+    filename = uploaded_file.filename or ""
+    if not filename.lower().endswith(".npy"):
         return jsonify({"error": "only .npy files are allowed"}), 400
 
-    upload_dir = "/app/embeddings/incoming"
+    if request.content_length and request.content_length > app.config['MAX_CONTENT_LENGTH']:
+        return jsonify({"error": "file too large; maximum size is 1 GiB"}), 413
+
+    upload_dir = os.environ.get(
+        "EMBEDDINGS_INCOMING_DIR",
+        os.path.join(BASE_DIR, "embeddings", "incoming"),
+    )
     os.makedirs(upload_dir, exist_ok=True)
 
     temp_path = os.path.join(
@@ -46,8 +54,21 @@ def upload_embedding():
         "mpnet_multilingual_embeddings_100k.npy"
     )
 
-    uploaded_file.save(temp_path)
-    os.replace(temp_path, final_path)
+    try:
+        uploaded_file.save(temp_path)
+        # Yalnızca güvenli .npy dosyalarını kabul et; pickle çalıştırma.
+        uploaded_array = np.load(temp_path, allow_pickle=False, mmap_mode="r")
+        if uploaded_array.ndim != 2 or uploaded_array.shape[1] != 768:
+            raise ValueError("embedding matrisi (N, 768) şeklinde olmalıdır")
+        if not np.issubdtype(uploaded_array.dtype, np.number):
+            raise ValueError("embedding matrisi sayısal dtype içermelidir")
+        if not np.all(np.isfinite(uploaded_array)):
+            raise ValueError("embedding matrisi sonlu sayısal değerler içermelidir")
+        os.replace(temp_path, final_path)
+    except (OSError, ValueError, EOFError) as exc:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        return jsonify({"error": f"invalid embedding file: {exc}"}), 400
 
     file_size = os.path.getsize(final_path)
 
@@ -406,6 +427,9 @@ def apply_lod_sampling(
 @app.route('/api/plot', methods=['GET'])
 def get_plot():
   algorithm = request.args.get('algorithm', 'hdbscan').lower()
+  view = request.args.get('view', 'risk').lower()
+  if view not in {'risk', 'cluster'}:
+    view = 'risk'
 
   # Opsiyonel BBox (Bounding Box) filtre parametreleri
   raw_xmin = request.args.get('xmin')
@@ -490,9 +514,10 @@ def get_plot():
         or 'umap_y' not in df.columns
         or df['umap_x'].isna().any()
     ):
-      np.random.seed(42)
-      df['umap_x'] = np.random.normal(loc=15.0, scale=8.0, size=len(df))
-      df['umap_y'] = np.random.normal(loc=15.0, scale=8.0, size=len(df))
+      return jsonify({
+          'error': 'UMAP koordinatları bulunamadı veya eksik. '
+                   'Önce generate_hdbscan_umap_20k.py çalıştırılmalıdır.'
+      }), 503
 
     # BBox filtreleme uygulama (xmin <= umap_x <= xmax ve ymin <= umap_y <= ymax)
     if bbox_filter is not None:
@@ -555,23 +580,40 @@ def get_plot():
     ]
 
     # 1. Ana Trace: Tüm makaleler (minimum customdata ile)
+    cluster_palette = [
+        '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f',
+        '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#374983'
+    ]
+    if view == 'cluster':
+      marker_colors = [
+          '#dc2626' if int(k) == -1 else cluster_palette[abs(int(k)) % len(cluster_palette)]
+          for k in plot_df['kume']
+      ]
+    else:
+      marker_colors = plot_df['risk_skoru'].tolist()
+
+    marker_config = dict(
+        size=[10 if int(k) == -1 else 6 for k in plot_df['kume']],
+        # Scattergl bazı Plotly sürümlerinde nokta başına symbol dizisini
+        # desteklemez; WebGL uyumluluğu için sembol scalar tutulur.
+        symbol='circle',
+        color=marker_colors,
+        showscale=view == 'risk',
+        opacity=0.9,
+        line=dict(width=1, color='#111827'),
+    )
+    if view == 'risk':
+      marker_config.update(
+          colorscale=[[0, '#474747'], [0.5, '#8F5D5D'], [1, '#bb0000']],
+          colorbar=dict(title='Risk', thickness=10, len=0.8),
+      )
+
     main_trace = go.Scattergl(
         x=plot_df['umap_x'].tolist(),
         y=plot_df['umap_y'].tolist(),
         mode='markers',
         customdata=records,
-        marker=dict(
-            size=6,
-            color=plot_df['risk_skoru'].tolist(),
-            colorscale=[
-                [0, '#474747'],
-                [0.5, "#8F5D5D"],
-                [1, "#bb0000"],
-            ],
-            showscale=True,
-            colorbar=dict(title='Risk', thickness=10, len=0.8),
-            opacity=0.8,
-        ),
+        marker=marker_config,
         text=hover_texts,
         hoverinfo='text',
         name='Makaleler'
@@ -958,4 +1000,5 @@ def kmeans_umap():
   return send_file(umap_path)
 
 if __name__ == '__main__':
-  app.run(host='0.0.0.0', port=5001, debug=True)
+  debug = os.getenv('FLASK_DEBUG', '0').lower() in {'1', 'true', 'yes'}
+  app.run(host='0.0.0.0', port=5001, debug=debug)
